@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AETHER-SG — Offline Tactical Viewer (Simulated Slice)</title>
+<link rel="stylesheet" href="./style.css" />
+<!--
+  PRODUCTION AIRGAP NOTE:
+  This viewer loads three.js from CDN via the importmap below for hackathon demo convenience.
+  Production airgap execution must vendor three.js locally (download three.module.js and
+  OrbitControls.js into this folder and rewrite the importmap to point at ./vendor/...)
+  so the page runs with Wi-Fi off and no network calls.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app" class="app">
+  <aside class="panel" aria-label="AETHER-SG controls">
+    <header class="brand">
+      <div class="brand-top">
+        <span class="dot" aria-hidden="true"></span>
+        <h1>AETHER-SG</h1>
+        <span class="badge badge-airgap" title="Demonstrates airgapped execution: cached tensors, no network calls required once loaded">WI-FI OFF · AIRGAP</span>
+      </div>
+      <p class="subtitle">Offline tactical viewer · Toa Payoh slice · drone solver <strong>0–60&nbsp;m</strong></p>
+      <p class="replay-note">Cached replay — evolved offline (pre-mission), replayed here. Not live evolution, not live capture.</p>
+      <p class="source-note" id="sourceNote">Loading data…</p>
+    </header>
+
+    <section class="card">
+      <h2>Viewer mode</h2>
+      <div class="gen-row" role="group" aria-label="Viewer mode toggle">
+        <button id="modeSimBtn" class="gen-btn active" type="button" data-mode="simulated">Simulated Slice</button>
+        <button id="modeRealBtn" class="gen-btn" type="button" data-mode="real">Real Capture (Aleph)</button>
+      </div>
+      <p class="micro" id="modeHint">Simulated replay from data.json. Switch to Real Capture to load the Aleph capture (mesh.glb, satellite, Street View).</p>
+    </section>
+
+    <section class="card" id="realCard" hidden>
+      <h2>Real Capture (Aleph) <span class="hint">research prototype</span></h2>
+      <p class="disclaimer-real">Real Aleph capture — research prototype only; Google satellite/Street View/3D mesh layers are not redistributable; production swaps to OneMap SG.</p>
+      <p class="micro" id="realNote">Not loaded yet.</p>
+      <div id="realStats"></div>
+    </section>
+
+    <section class="card">
+      <h2>Evolution generation <span class="hint">(cached)</span></h2>
+      <div class="gen-row" role="group" aria-label="Generation selector">
+        <button id="gen0Btn" class="gen-btn" type="button" data-gen="Gen0">Gen 0 · baseline</button>
+        <button id="gen25Btn" class="gen-btn" type="button" data-gen="Gen25">Gen 25 · intermediate</button>
+        <button id="genFinalBtn" class="gen-btn active" type="button" data-gen="final">Final (Gen 500) · winner</button>
+      </div>
+      <p class="micro">Single scalar objective (CD): maximise −(time + energy + flood/GNSS penalties), hard reject on collision.</p>
+    </section>
+
+    <section class="card">
+      <h2>Flood screening <span class="hint">0–0.5 m</span></h2>
+      <label class="slider-label" for="floodSlider">
+        Water level <span id="floodValue">0.10 m</span>
+      </label>
+      <input id="floodSlider" type="range" min="0" max="0.5" step="0.01" value="0.10" />
+      <p class="micro">Screening tensor over DEM. Wheelchair block where depth ≥ <strong>0.10 m</strong> (amber). PUB owns operational hydrology.</p>
+      <p class="micro" id="floodStats">—</p>
+    </section>
+
+    <section class="card">
+      <h2>Layers</h2>
+      <label class="toggle"><input id="toggleFlood" type="checkbox" checked /> <span>Flood plane + blocked cells</span></label>
+      <label class="toggle"><input id="toggleGnss" type="checkbox" checked /> <span>GNSS shadow heatmap</span></label>
+      <label class="toggle"><input id="toggleDrone" type="checkbox" checked /> <span>Drone path (0–60 m)</span></label>
+      <label class="toggle"><input id="toggleGround" type="checkbox" checked /> <span>Ground wheelchair path</span></label>
+      <label class="toggle"><input id="toggleRamps" type="checkbox" checked /> <span>Ramps (human-verified)</span></label>
+    </section>
+
+    <section class="card">
+      <h2>Metrics <span class="hint">CD scalar</span></h2>
+      <table class="metrics" aria-label="Metrics by generation">
+        <thead><tr><th>Gen</th><th>Score</th><th>Time</th><th>Collisions</th></tr></thead>
+        <tbody id="metricsBody"></tbody>
+      </table>
+      <p class="micro" id="metricsDetail">—</p>
+    </section>
+
+    <section class="card legend">
+      <h2>Legend</h2>
+      <ul>
+        <li><span class="swatch sw-building"></span> Buildings (OSM anchors)</li>
+        <li><span class="swatch sw-flood"></span> Flooded cell (screening)</li>
+        <li><span class="swatch sw-blocked"></span> Wheelchair-blocked (≥0.10 m)</li>
+        <li><span class="swatch sw-gnss"></span> GNSS shadow (advisory)</li>
+        <li><span class="swatch sw-drone"></span> Drone path</li>
+        <li><span class="swatch sw-ground"></span> Ground path</li>
+        <li><span class="swatch sw-ramp"></span> Ramp marker</li>
+      </ul>
+    </section>
+
+    <footer class="disclaimers">
+      <p><strong>screening model — PUB owns operational hydrology.</strong> Flood layer is a DEM screening estimate, not a hydrodynamic forecast.</p>
+      <p><strong>simulated slice — not for navigation.</strong> Cached demo geometry and paths for planning illustration only.</p>
+      <p class="micro">Flood wheelchair cutoff 0.10 m is an inference threshold — validate against field checks before operational use.</p>
+    </footer>
+  </aside>
+
+  <main class="viewport-wrap">
+    <div id="viewport" class="viewport" aria-label="3D tactical viewport"></div>
+    <div class="gallery-strip" id="galleryStrip" hidden aria-label="Street View photo gallery">
+      <span class="gallery-title">Street View photos</span>
+      <div class="gallery-scroll" id="galleryScroll"></div>
+    </div>
+    <div class="hud" aria-hidden="true">
+      <span id="hudGen">Final (Gen 500)</span><span class="hud-sep">·</span><span id="hudFlood">0.10 m</span><span class="hud-sep">·</span><span>offline · local tensors</span>
+    </div>
+    <div class="cam-hint" aria-hidden="true">drag: orbit · wheel: zoom · right-drag: pan</div>
+  </main>
+</div>
+
+<div class="photo-overlay" id="photoOverlay" hidden>
+  <div class="photo-box">
+    <img id="photoOverlayImg" alt="Street View photo" />
+    <div class="photo-meta">
+      <span id="photoOverlayMeta">—</span>
+      <span class="photo-credit">Street View (Google) research-only</span>
+    </div>
+    <button id="photoOverlayClose" class="photo-close" type="button" aria-label="Close photo view">×</button>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
