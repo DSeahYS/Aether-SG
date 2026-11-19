@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="Aleph" copyright="OpenStreetMap and contributors" attribution="https://www.openstreetmap.org/copyright" license="https://opendatacommons.org/licenses/odbl/1-0/">
+<bounds minlat="1.3879" minlon="103.9278" maxlat="1.3897" maxlon="103.9296"/>
+<node id="13348031136" version="1" timestamp="2025-12-02T15:15:41Z" user="" lat="1.3888388" lon="103.9286798"><tag k="admin_level" v="7"/><tag k="name" v="Pasir Ris Wafer Fab Park"/><tag k="place" v="neighbourhood"/><tag k="type" v="boundary"/></node>
+</osm>

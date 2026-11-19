@@ -183,11 +183,17 @@ scene.add(photoGroup); scene.add(buildingGroup); scene.add(losGroup); scene.add(
 /* ---------- asset path candidates (capture.json paths are viewer-relative) ---------- */
 function assetCandidates(p) {
   if (!p) return [];
+  const base = String(p).split('/').pop();
   const out = [String(p)];
   const m = String(p).match(/^\.\.\/captures\/[^/]+\/(.+)$/);
   if (m) out.push('./capture/' + m[1]);
   else if (/^capture\//.test(p)) out.push('./' + p);
-  out.push('./capture/' + String(p).split('/').pop());
+  out.push('./capture/' + base);
+  if (/\.jpe?g$/i.test(base)) {
+    const capName = (capture?.slice?.capture || capture?.name || 'aleph-20261119T022946Z-1upsr2v9');
+    out.push(`/captures/${capName}/streetview/photos/${base}`);
+    out.push(`../captures/${capName}/streetview/photos/${base}`);
+  }
   return [...new Set(out)];
 }
 function loadTexture(urls) {

@@ -14,6 +14,27 @@ derived layers (satellite, 3D mesh, Street View) are research-only.
 Drone envelope is 0-60 m. Flood is a screening tensor (PUB owns
 operational hydrology). Routes are advisory, not for navigation.
 
+---
+
+## Tactical 3D Visualizer
+
+![AETHER-SG Real Capture Tactical Visualizer](docs/images/01_tactical_overview.png)
+*AETHER-SG Tactical Visualizer in Toa Payoh, Singapore: rendering real 3D building photogrammetry, mesh-derived obstacle heightfields, 0–60 m low-altitude drone trajectory corridors, wheelchair evacuation ground paths, and street-level photo audits.*
+
+### Visualizer Features & Scenarios
+
+| 1. Evolution Baseline (Gen 0) | 2. Micro-Flood Screening |
+|:---:|:---:|
+| ![Evolution Gen 0](docs/images/02_evolution_gen0.png) | ![Flood Screening Scenario](docs/images/03_flood_scenario.png) |
+| *Baseline seed trajectory vs evolved collision-free route* | *Water accumulation with wheelchair blockage markers (depth ≥0.10 m)* |
+
+| 3. Street-Level Infrastructure Audit |
+|:---:|
+| ![Street View Photo Audit Modal](docs/images/04_streetview_inspection.png) |
+| *High-resolution panorama inspection for curb cuts, linkways, and obstacles* |
+
+---
+
 ## Layout
 
 - `src/aether/aleph_ingest.py` — `alephgeo` CLI wrapper (resolve,
@@ -33,6 +54,8 @@ operational hydrology). Routes are advisory, not for navigation.
   final drone routes, wheelchair ground route) -> viewer bundle.
 - `scripts/aleph.py` — JSON CLI over `aleph_ingest` (one subcommand
   per wrapper).
+- `scripts/capture_screenshots.py` — Playwright headless capture tool
+  generating high-resolution visualizer documentation screenshots.
 - `viewer/` — Three.js tactical viewer, real capture only
   (`./capture/capture.json` + indexed mesh / satellite / photos).
 - `cd/aether_evolve.ipynb` — CD notebook; see [cd/README-CD.md](cd/README-CD.md).
@@ -69,7 +92,7 @@ dem, dronePaths, groundPath, metrics) and refreshes the indexed
 3. Serve the project root and open the viewer:
 
 ```powershell
-.\.venv\Scripts\python.exe -m http.server 8100
+.\.venv\Scripts\python.exe scripts/serve.py --port 8100
 ```
 
 Then open http://127.0.0.1:8100/viewer/ in a browser. The server is
@@ -95,8 +118,6 @@ from CDN for convenience; the airgap build vendors it locally
 ## Tests
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/test_real_capture.py -v
-.\.venv\Scripts\python.exe -m pytest tests/test_aleph.py -v
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
