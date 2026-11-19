@@ -3,14 +3,15 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AETHER-SG — Offline Tactical Viewer (Simulated Slice)</title>
+<title>AETHER-SG — Real Capture Viewer · Toa Payoh</title>
 <link rel="stylesheet" href="./style.css" />
 <!--
-  PRODUCTION AIRGAP NOTE:
-  This viewer loads three.js from CDN via the importmap below for hackathon demo convenience.
-  Production airgap execution must vendor three.js locally (download three.module.js and
-  OrbitControls.js into this folder and rewrite the importmap to point at ./vendor/...)
-  so the page runs with Wi-Fi off and no network calls.
+  AIRGAP VENDORING NOTE:
+  The importmap below points at a public CDN for convenience.
+  For airgapped deployment, vendor three.js locally: download
+  three.module.js and OrbitControls.js / GLTFLoader.js into a
+  ./vendor/ folder next to this file and rewrite the importmap
+  paths to point at ./vendor/... so the page makes no network calls.
 -->
 <script type="importmap">
 {
@@ -22,112 +23,189 @@
 </script>
 </head>
 <body>
+<header class="topbar" aria-label="AETHER-SG header">
+  <div class="wordmark">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="mark-name">AETHER-SG</span>
+    <span class="mark-sub">Real Capture Viewer</span>
+  </div>
+  <div class="capture-name">
+    <span class="capture-kicker">Capture</span>
+    <span class="capture-title" id="captureTitle">Toa Payoh</span>
+  </div>
+  <div class="chips" aria-label="Viewer contracts">
+    <span class="chip chip-real">REAL CAPTURE</span>
+    <span class="chip">0–60M</span>
+    <span class="chip">FLOOD SCREENING</span>
+  </div>
+  <p class="source-note" id="sourceNote">Loading capture…</p>
+</header>
+
 <div id="app" class="app">
   <aside class="panel" aria-label="AETHER-SG controls">
-    <header class="brand">
-      <div class="brand-top">
-        <span class="dot" aria-hidden="true"></span>
-        <h1>AETHER-SG</h1>
-        <span class="badge badge-airgap" title="Demonstrates airgapped execution: cached tensors, no network calls required once loaded">WI-FI OFF · AIRGAP</span>
+    <section class="card location-card" id="locationCard" aria-label="Location picker">
+      <h2>Location <span class="hint">Aleph-style</span></h2>
+      <div class="loc-row">
+        <input id="placeInput" class="loc-input" type="text" placeholder="Place name, e.g. Lorong 2 Toa Payoh" aria-label="Place name" />
+        <button id="placeSearchBtn" class="loc-btn mono" type="button">Search</button>
       </div>
-      <p class="subtitle">Offline tactical viewer · Toa Payoh slice · drone solver <strong>0–60&nbsp;m</strong></p>
-      <p class="replay-note">Cached replay — evolved offline (pre-mission), replayed here. Not live evolution, not live capture.</p>
-      <p class="source-note" id="sourceNote">Loading data…</p>
-    </header>
-
-    <section class="card">
-      <h2>Viewer mode</h2>
-      <div class="gen-row" role="group" aria-label="Viewer mode toggle">
-        <button id="modeSimBtn" class="gen-btn active" type="button" data-mode="simulated">Simulated Slice</button>
-        <button id="modeRealBtn" class="gen-btn" type="button" data-mode="real">Real Capture (Aleph)</button>
+      <ul id="placeResults" class="place-results" aria-label="Place results"></ul>
+      <div class="bbox-grid">
+        <label>Min lat <input id="bMinLat" type="number" step="0.0001" /></label>
+        <label>Min lon <input id="bMinLon" type="number" step="0.0001" /></label>
+        <label>Max lat <input id="bMaxLat" type="number" step="0.0001" /></label>
+        <label>Max lon <input id="bMaxLon" type="number" step="0.0001" /></label>
       </div>
-      <p class="micro" id="modeHint">Simulated replay from data.json. Switch to Real Capture to load the Aleph capture (mesh.glb, satellite, Street View).</p>
-    </section>
-
-    <section class="card" id="realCard" hidden>
-      <h2>Real Capture (Aleph) <span class="hint">research prototype</span></h2>
-      <p class="disclaimer-real">Real Aleph capture — research prototype only; Google satellite/Street View/3D mesh layers are not redistributable; production swaps to OneMap SG.</p>
-      <p class="micro" id="realNote">Not loaded yet.</p>
-      <div id="realStats"></div>
+      <div class="loc-row">
+        <button id="captureBtn" class="loc-btn loc-primary mono" type="button">Capture &amp; rebuild</button>
+        <span id="jobStatus" class="micro mono" role="status">—</span>
+      </div>
+      <p class="micro" id="apiNote">Location API (GET /api/resolve · POST /api/capture · poll /api/job) runs under <span class="mono">serve.py</span>, not static hosting. If it is unavailable, serve from the project root with <span class="mono">python serve.py --port 8100</span> then reload this page.</p>
     </section>
 
     <section class="card">
-      <h2>Evolution generation <span class="hint">(cached)</span></h2>
-      <div class="gen-row" role="group" aria-label="Generation selector">
-        <button id="gen0Btn" class="gen-btn" type="button" data-gen="Gen0">Gen 0 · baseline</button>
-        <button id="gen25Btn" class="gen-btn" type="button" data-gen="Gen25">Gen 25 · intermediate</button>
-        <button id="genFinalBtn" class="gen-btn active" type="button" data-gen="final">Final (Gen 500) · winner</button>
-      </div>
-      <p class="micro">Single scalar objective (CD): maximise −(time + energy + flood/GNSS penalties), hard reject on collision.</p>
+      <h2>Capture <span class="hint">(Aleph, read-only)</span></h2>
+      <p class="micro" id="captureNote">Loading ./capture/capture.json …</p>
+      <div id="captureStats"></div>
     </section>
 
     <section class="card">
-      <h2>Flood screening <span class="hint">0–0.5 m</span></h2>
+      <h2>Scenario <span class="hint">flood over real DEM</span></h2>
       <label class="slider-label" for="floodSlider">
-        Water level <span id="floodValue">0.10 m</span>
+        Water level <span id="floodValue" class="mono">0.10 m</span>
       </label>
       <input id="floodSlider" type="range" min="0" max="0.5" step="0.01" value="0.10" />
-      <p class="micro">Screening tensor over DEM. Wheelchair block where depth ≥ <strong>0.10 m</strong> (amber). PUB owns operational hydrology.</p>
-      <p class="micro" id="floodStats">—</p>
+      <p class="micro">Screening bathtub over the mesh-derived heightfield. Wheelchair block where depth ≥ <strong>0.10 m</strong> (amber). PUB owns operational hydrology.</p>
+      <p class="micro mono" id="floodStats">—</p>
     </section>
 
     <section class="card">
-      <h2>Layers</h2>
-      <label class="toggle"><input id="toggleFlood" type="checkbox" checked /> <span>Flood plane + blocked cells</span></label>
-      <label class="toggle"><input id="toggleGnss" type="checkbox" checked /> <span>GNSS shadow heatmap</span></label>
-      <label class="toggle"><input id="toggleDrone" type="checkbox" checked /> <span>Drone path (0–60 m)</span></label>
-      <label class="toggle"><input id="toggleGround" type="checkbox" checked /> <span>Ground wheelchair path</span></label>
-      <label class="toggle"><input id="toggleRamps" type="checkbox" checked /> <span>Ramps (human-verified)</span></label>
-    </section>
-
-    <section class="card">
-      <h2>Metrics <span class="hint">CD scalar</span></h2>
-      <table class="metrics" aria-label="Metrics by generation">
+      <h2>Evolution <span class="hint">(cached runs)</span></h2>
+      <div class="gen-row" role="group" aria-label="Generation selector">
+        <button id="gen0Btn" class="gen-btn mono" type="button" data-gen="Gen0">Gen 0 · baseline</button>
+        <button id="gen25Btn" class="gen-btn mono" type="button" data-gen="Gen25">Gen 25 · mid</button>
+        <button id="genFinalBtn" class="gen-btn mono active" type="button" data-gen="final">Final · winner</button>
+      </div>
+      <table class="metrics mono" aria-label="Metrics by generation">
         <thead><tr><th>Gen</th><th>Score</th><th>Time</th><th>Collisions</th></tr></thead>
         <tbody id="metricsBody"></tbody>
       </table>
       <p class="micro" id="metricsDetail">—</p>
     </section>
 
+    <section class="card" aria-label="Environment metrics">
+      <h2>Environment</h2>
+      <dl class="stats" id="envRows"><dt>Capture</dt><dd>—</dd></dl>
+    </section>
+
+    <section class="card" aria-label="Flight metrics">
+      <h2>Flight <span class="hint" id="flightGenLabel">(Final)</span></h2>
+      <dl class="stats" id="flightRows"><dt>Score</dt><dd>—</dd></dl>
+      <h3 class="subhead">Score components</h3>
+      <dl class="stats" id="scoreRows"><dt>—</dt><dd>—</dd></dl>
+      <div class="playback">
+        <button id="playBtn" class="loc-btn mono" type="button">Pause</button>
+        <label class="play-label" for="speedSel">Speed</label>
+        <select id="speedSel" class="loc-input mono" aria-label="Playback speed">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+        </select>
+      </div>
+      <label class="slider-label" for="progressSlider">Progress <span id="progressLabel" class="mono">0%</span></label>
+      <input id="progressSlider" type="range" min="0" max="1000" step="1" value="0" />
+    </section>
+
+    <section class="card" aria-label="Ground metrics">
+      <h2>Ground</h2>
+      <dl class="stats" id="groundRows"><dt>Length</dt><dd>—</dd></dl>
+    </section>
+
+    <section class="card" aria-label="Link metrics">
+      <h2>Link <span class="hint">live from flight</span></h2>
+      <dl class="stats" id="linkRows"><dt>LOS</dt><dd>—</dd></dl>
+    </section>
+
+    <section class="card">
+      <h2>Layers</h2>
+      <label class="toggle"><input id="toggleMesh" type="checkbox" checked /> <span>3D mesh (mesh.glb)</span></label>
+      <label class="toggle"><input id="toggleSatellite" type="checkbox" checked /> <span>Satellite ground plane</span></label>
+      <label class="toggle"><input id="toggleFlood" type="checkbox" checked /> <span>Flood plane + blocked cells</span></label>
+      <label class="toggle"><input id="toggleGnss" type="checkbox" checked /> <span>GNSS shadow (advisory screening)</span></label>
+      <label class="toggle"><input id="toggleDrone" type="checkbox" checked /> <span>Drone route · 0–60 m</span></label>
+      <label class="toggle"><input id="toggleGround" type="checkbox" checked /> <span>Ground route</span></label>
+      <label class="toggle"><input id="togglePhotos" type="checkbox" checked /> <span>Photo points</span></label>
+      <label class="toggle"><input id="toggleBuildings" type="checkbox" checked /> <span>Building boxes (mesh heightfield)</span></label>
+      <label class="toggle"><input id="toggleLos" type="checkbox" checked /> <span>LOS + swath (live)</span></label>
+    </section>
+
     <section class="card legend">
       <h2>Legend</h2>
       <ul>
-        <li><span class="swatch sw-building"></span> Buildings (OSM anchors)</li>
-        <li><span class="swatch sw-flood"></span> Flooded cell (screening)</li>
-        <li><span class="swatch sw-blocked"></span> Wheelchair-blocked (≥0.10 m)</li>
-        <li><span class="swatch sw-gnss"></span> GNSS shadow (advisory)</li>
-        <li><span class="swatch sw-drone"></span> Drone path</li>
-        <li><span class="swatch sw-ground"></span> Ground path</li>
-        <li><span class="swatch sw-ramp"></span> Ramp marker</li>
+        <li><span class="swatch sw-mesh"></span> 3D mesh · low-slope surface ring</li>
+        <li><span class="swatch sw-flood"></span> Flooded ground (screening)</li>
+        <li><span class="swatch sw-blocked"></span> Wheelchair-blocked (≥ 0.10 m)</li>
+        <li><span class="swatch sw-shadow"></span> GNSS shadow (advisory)</li>
+        <li><span class="swatch sw-drone"></span> Drone route 0–60 m</li>
+        <li><span class="swatch sw-ground"></span> Ground route</li>
+        <li><span class="swatch sw-photo"></span> Photo point (research layer)</li>
+        <li><span class="swatch sw-building"></span> Building box (mesh heightfield)</li>
+        <li><span class="swatch sw-los-clear"></span> LOS clear (olive)</li>
+        <li><span class="swatch sw-los-blocked"></span> LOS blocked (rust)</li>
+        <li><span class="swatch sw-swath"></span> Swath footprint (sensor)</li>
       </ul>
     </section>
 
     <footer class="disclaimers">
-      <p><strong>screening model — PUB owns operational hydrology.</strong> Flood layer is a DEM screening estimate, not a hydrodynamic forecast.</p>
-      <p><strong>simulated slice — not for navigation.</strong> Cached demo geometry and paths for planning illustration only.</p>
-      <p class="micro">Flood wheelchair cutoff 0.10 m is an inference threshold — validate against field checks before operational use.</p>
+      <p><strong>Real Aleph capture — research only.</strong> Google-derived layers (satellite, 3D mesh, Street View) are research-only and not redistributable; production swaps to OneMap SG.</p>
+      <p><strong>Screening flood — PUB owns operational hydrology.</strong> DEM bathtub estimate, not a hydrodynamic forecast.</p>
+      <p><strong>Advisory routes — not for navigation.</strong> Cached offline solver output; validate on site before operational use.</p>
+      <p class="micro">Flood wheelchair cutoff 0.10 m is an inference threshold — validate against field checks.</p>
     </footer>
   </aside>
 
   <main class="viewport-wrap">
-    <div id="viewport" class="viewport" aria-label="3D tactical viewport"></div>
-    <div class="gallery-strip" id="galleryStrip" hidden aria-label="Street View photo gallery">
-      <span class="gallery-title">Street View photos</span>
-      <div class="gallery-scroll" id="galleryScroll"></div>
+    <div id="viewport" class="viewport" aria-label="3D capture viewport"></div>
+
+    <div class="empty-state" id="emptyState" hidden>
+      <div class="empty-card">
+        <h2>No capture loaded</h2>
+        <p>This viewer renders only <span class="mono">./capture/capture.json</span> and never invents scene data.</p>
+        <p>Generate the real capture from the project root with:</p>
+        <p class="mono cmd">python scripts/run_real.py</p>
+        <p>Then reload this page. Served over a local static server (for example <span class="mono">python -m http.server</span> from this folder).</p>
+      </div>
     </div>
-    <div class="hud" aria-hidden="true">
-      <span id="hudGen">Final (Gen 500)</span><span class="hud-sep">·</span><span id="hudFlood">0.10 m</span><span class="hud-sep">·</span><span>offline · local tensors</span>
+
+    <div class="hud mono" aria-hidden="true" id="hudBar">
+      <span id="hudGen">—</span><span class="hud-sep">·</span><span id="hudFlood">—</span><span class="hud-sep">·</span><span id="hudLos">LOS —</span><span class="hud-sep">·</span><span>real Aleph capture · Toa Payoh</span>
     </div>
-    <div class="cam-hint" aria-hidden="true">drag: orbit · wheel: zoom · right-drag: pan</div>
+    <div class="cam-hint" aria-hidden="true">drag: orbit · wheel: zoom · right-drag: pan · click scene: details</div>
+
+    <div class="filmstrip" id="filmstrip" hidden aria-label="Street View photo filmstrip">
+      <span class="film-title">Street View photos</span>
+      <div class="film-scroll" id="filmScroll"></div>
+    </div>
   </main>
+</div>
+
+<div class="detail-card" id="detailCard" hidden role="dialog" aria-label="Scene details">
+  <div class="detail-head">
+    <h3 id="detailTitle">Details</h3>
+    <button id="detailClose" class="detail-close mono" type="button" aria-label="Close details">×</button>
+  </div>
+  <img id="detailImg" alt="Photo thumbnail" hidden />
+  <dl class="stats" id="detailRows"></dl>
+  <p class="micro" id="detailHint">Click empty space to close.</p>
 </div>
 
 <div class="photo-overlay" id="photoOverlay" hidden>
   <div class="photo-box">
     <img id="photoOverlayImg" alt="Street View photo" />
     <div class="photo-meta">
-      <span id="photoOverlayMeta">—</span>
-      <span class="photo-credit">Street View (Google) research-only</span>
+      <span class="mono" id="photoOverlayMeta">—</span>
+      <span class="photo-credit">Street View (Google) — research only</span>
     </div>
     <button id="photoOverlayClose" class="photo-close" type="button" aria-label="Close photo view">×</button>
   </div>
