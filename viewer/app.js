@@ -1033,9 +1033,14 @@ async function startCapture() {
     const res = await fetch('/api/capture', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bbox }),
+      /* Server contract: bbox as [S, W, N, E] array. */
+      body: JSON.stringify({ bbox: [bbox.minLat, bbox.minLon, bbox.maxLat, bbox.maxLon] }),
     });
-    if (!res.ok) throw new Error('capture ' + res.status);
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      $id('jobStatus').textContent = 'Capture rejected: ' + (err?.error?.message || ('HTTP ' + res.status));
+      return;
+    }
     data = await res.json();
   } catch { apiUnavailable(); return; }
   const jobId = data.jobId ?? data.job_id ?? data.id ?? (data.job && data.job.id);
